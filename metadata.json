@@ -1,0 +1,8 @@
+{
+  "name": "SMUK SETS Go Digital",
+  "description": "Official digital portal for SMUK school parents and students to access exam results online by student ID, watch school live streams, get ongoing program updates, and download school documents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

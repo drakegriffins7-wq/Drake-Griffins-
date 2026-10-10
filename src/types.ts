@@ -1,115 +1,172 @@
-export type TabType = 'home' | 'live' | 'updates' | 'profile';
+import type { Movie, VJ } from '../types';
 
-export interface SubjectScore {
-  code: string;
-  name: string;
-  aoiScore: number; // Activity of Integration (AoI) / Continuous Assessment (out of 20%)
-  endTermScore: number; // End of Term Summative Assessment (out of 80%)
-  midTermScore?: number; // Backward-compatible alias for AoI
-  totalScore: number; // Overall percentage score (out of 100%)
-  scoreOutOf3: number; // Ugandan CBC Competence Score (0.0 to 3.0 scale)
-  competencyLevel: 'Level 3 (Outstanding)' | 'Level 2 (Achieved)' | 'Level 1 (Basic)';
-  grade: string; // A (2.5 - 3.0), B (1.5 - 2.4), C (0.9 - 1.4)
-  points: number;
-  teacher: string;
-  remarks: string; // Specific competence descriptor remarks
-  category?: 'Compulsory Core' | 'Elective / Vocational' | 'Religious Education' | 'Project Work';
-}
+export const defaultVjs: VJ[] = [
+  {
+    id: 'vj-1',
+    name: 'Moses Mukiibi',
+    photoUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=900&q=80',
+    bio: 'A charismatic Ugandan video jockey who brings vibrant storytelling and cultural flavor to every narration.',
+    movies: ['coming-home', 'lighthouse', 'uganda-sunrise'],
+  },
+  {
+    id: 'vj-2',
+    name: 'Kisakye Sarah',
+    photoUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=900&q=80',
+    bio: 'Known for elegant Luganda translations and heartfelt commentary, helping audiences connect with global stories.',
+    movies: ['kibale-echoes', 'city-of-rains', 'the-little-garden'],
+  },
+  {
+    id: 'vj-3',
+    name: 'Arua Daniel',
+    photoUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=900&q=80',
+    bio: 'A documentary storyteller and VJ with a strong focus on community stories and cinematic pacing.',
+    movies: ['mbarara-voices', 'pearl-bridge', 'uganda-night'],
+  },
+];
 
-export interface StudentResult {
-  id: string; // ID e.g. SMUK/2024/001
-  studentId: string; // normalized lookup
-  fullName: string;
-  gender: 'Male' | 'Female';
-  classGrade: string; // e.g., Senior 4 Tech, Senior 3 Science
-  term: string; // e.g., Term 3 2026
-  academicYear: string; // 2026
-  dateOfBirth: string;
-  house: string;
-  guardianName: string;
-  guardianContact: string;
-  guardianEmail: string;
-  avatarUrl?: string;
-  attendance: {
-    daysPresent: number;
-    totalDays: number;
-    percentage: number;
-  };
-  subjects: SubjectScore[];
-  totalScore: number;
-  averageScore: number;
-  totalAggregates: number;
-  division: string; // e.g. Division 1 (Distinction)
-  classRank: number;
-  totalStudentsInClass: number;
-  conductGrade: string; // Excellent, Very Good, Good
-  classTeacherRemarks: string;
-  headTeacherRemarks: string;
-  feesBalance: number;
-  feesStatus: 'Cleared' | 'Pending' | 'Partial';
-  nextTermBegins: string;
-  status: 'Published' | 'Draft';
-  createdAt: string;
-}
-
-export interface SchoolDocument {
-  id: string;
-  title: string;
-  category: 'Circular' | 'Exam Timetable' | 'Syllabus' | 'Fee Structure' | 'Newsletter' | 'SETS Policy' | 'Results Sheet' | 'New Curriculum Guide' | 'NCDC AoI Assessment';
-  targetAudience: string;
-  uploadDate: string;
-  fileSize: string;
-  fileType: 'PDF' | 'XLSX' | 'DOCX' | 'IMAGE';
-  fileName: string;
-  fileContent?: string; // Data URL or text preview
-  description: string;
-  downloadCount: number;
-  uploadedBy: string;
-  isImportant?: boolean;
-}
-
-export interface SchoolUpdate {
-  id: string;
-  title: string;
-  subtitle: string;
-  category: 'SETS Innovation' | 'Academic' | 'Sports & Co-curricular' | 'Administrative' | 'Parents Notice';
-  date: string;
-  time?: string;
-  venue?: string;
-  description: string;
-  detailedContent?: string;
-  tags: string[];
-  coordinator: string;
-  imageUrl?: string;
-  isPinned?: boolean;
-  attachmentName?: string;
-  attachmentSize?: string;
-  documentId?: string;
-}
-
-export interface ChatMessage {
-  id: string;
-  sender: string;
-  role: 'Parent' | 'Student' | 'Teacher' | 'Admin';
-  message: string;
-  timestamp: string;
-  isPinned?: boolean;
-  likes?: number;
-}
-
-export interface LiveStream {
-  id: string;
-  title: string;
-  subtitle: string;
-  status: 'live' | 'upcoming' | 'recorded';
-  thumbnailUrl: string;
-  speaker: string;
-  speakerRole: string;
-  viewersCount: number;
-  scheduledFor: string;
-  duration?: string;
-  description: string;
-  category: 'Assembly' | 'Prize Giving' | 'Science & SETS' | 'Sports Meet' | 'Webinar';
-  chatMessages: ChatMessage[];
-  videoSimulationUrl?: string;
-}
+export const defaultMovies: Movie[] = [
+  {
+    id: 'mov-1',
+    title: 'The Pearl of Kampala',
+    slug: 'the-pearl-of-kampala',
+    description:
+      'A tense urban drama following a young musician trying to protect his family while navigating ambition, debt, and loyalty in Kampala.',
+    posterUrl: 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&w=900&q=80',
+    bannerUrl: 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&w=1600&q=80',
+    releaseYear: 2024,
+    genre: 'Drama',
+    language: 'Luganda',
+    durationMinutes: 118,
+    vjId: 'vj-1',
+    vjName: 'Moses Mukiibi',
+    isUgandan: true,
+    isLugandaTranslation: false,
+    featured: true,
+    trailerUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
+    videoUrl: '',
+    subtitlesUrl: '',
+    authorizationRequired: true,
+    availability: 'authorized',
+    rating: 4.8,
+  },
+  {
+    id: 'mov-2',
+    title: 'Lighthouse in the Rain',
+    slug: 'lighthouse-in-the-rain',
+    description:
+      'A heartfelt story of regret and second chances, translated into Luganda and narrated by a Ugandan VJ with emotional depth.',
+    posterUrl: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=900&q=80',
+    bannerUrl: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=1600&q=80',
+    releaseYear: 2023,
+    genre: 'Romance',
+    language: 'Luganda',
+    durationMinutes: 102,
+    vjId: 'vj-2',
+    vjName: 'Kisakye Sarah',
+    isUgandan: false,
+    isLugandaTranslation: true,
+    featured: false,
+    trailerUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
+    videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
+    subtitlesUrl: '',
+    authorizationRequired: true,
+    availability: 'authorized',
+    rating: 4.6,
+  },
+  {
+    id: 'mov-3',
+    title: 'Uganda Sunrise',
+    slug: 'uganda-sunrise',
+    description:
+      'A music-driven feature exploring family, reconciliation, and the strength of community across the hills of western Uganda.',
+    posterUrl: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=900&q=80',
+    bannerUrl: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1600&q=80',
+    releaseYear: 2022,
+    genre: 'Music',
+    language: 'English',
+    durationMinutes: 96,
+    vjId: 'vj-1',
+    vjName: 'Moses Mukiibi',
+    isUgandan: true,
+    isLugandaTranslation: false,
+    featured: false,
+    trailerUrl: '',
+    videoUrl: '',
+    subtitlesUrl: '',
+    authorizationRequired: false,
+    availability: 'unavailable',
+    rating: 4.3,
+  },
+  {
+    id: 'mov-4',
+    title: 'Kibale Echoes',
+    slug: 'kibale-echoes',
+    description:
+      'An evocative wilderness adventure about belonging, remembrance, and the promise of home in Uganda’s forests.',
+    posterUrl: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?auto=format&fit=crop&w=900&q=80',
+    bannerUrl: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?auto=format&fit=crop&w=1600&q=80',
+    releaseYear: 2021,
+    genre: 'Adventure',
+    language: 'Luganda',
+    durationMinutes: 110,
+    vjId: 'vj-2',
+    vjName: 'Kisakye Sarah',
+    isUgandan: true,
+    isLugandaTranslation: false,
+    featured: false,
+    trailerUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
+    videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
+    subtitlesUrl: '',
+    authorizationRequired: true,
+    availability: 'authorized',
+    rating: 4.5,
+  },
+  {
+    id: 'mov-5',
+    title: 'City of Rains',
+    slug: 'city-of-rains',
+    description:
+      'A visually rich city drama about ambition, migration, and the dreams that keep a generation moving.',
+    posterUrl: 'https://images.unsplash.com/photo-1516280440614-42139bb4c12a?auto=format&fit=crop&w=900&q=80',
+    bannerUrl: 'https://images.unsplash.com/photo-1516280440614-42139bb4c12a?auto=format&fit=crop&w=1600&q=80',
+    releaseYear: 2024,
+    genre: 'Drama',
+    language: 'English',
+    durationMinutes: 124,
+    vjId: 'vj-2',
+    vjName: 'Kisakye Sarah',
+    isUgandan: false,
+    isLugandaTranslation: true,
+    featured: false,
+    trailerUrl: '',
+    videoUrl: '',
+    subtitlesUrl: '',
+    authorizationRequired: true,
+    availability: 'authorized',
+    rating: 4.7,
+  },
+  {
+    id: 'mov-6',
+    title: 'The Little Garden',
+    slug: 'the-little-garden',
+    description:
+      'A tender family film about resilience, heritage, and the healing power of community across generations.',
+    posterUrl: 'https://images.unsplash.com/photo-1524985069026-dd778a71c7b4?auto=format&fit=crop&w=900&q=80',
+    bannerUrl: 'https://images.unsplash.com/photo-1524985069026-dd778a71c7b4?auto=format&fit=crop&w=1600&q=80',
+    releaseYear: 2020,
+    genre: 'Family',
+    language: 'Luganda',
+    durationMinutes: 89,
+    vjId: 'vj-2',
+    vjName: 'Kisakye Sarah',
+    isUgandan: true,
+    isLugandaTranslation: false,
+    featured: false,
+    trailerUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
+    videoUrl: '',
+    subtitlesUrl: '',
+    authorizationRequired: true,
+    availability: 'authorized',
+    rating: 4.2,
+  },
+];

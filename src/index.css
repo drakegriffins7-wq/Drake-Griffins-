@@ -1,23 +1,739 @@
-@import "tailwindcss";
+import { useEffect, useMemo, useState } from 'react';
+import { defaultMovies, defaultVjs } from './data/mockData';
+import {
+  defaultAccount,
+  fetchCatalog,
+  getFallbackMovies,
+  getStoredAccount,
+  persistFavorite,
+  persistWatchlist,
+  resetPasswordRequest,
+  saveCatalogLocally,
+  seedAdminMovie,
+  signInAccount,
+  signOutAccount,
+  signUpAccount,
+} from './lib/streamingService';
+import type { AuthMode, Movie, MovieFormState, PageView, UserAccount, VJ } from './types';
 
-@layer base {
-  body {
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  }
+const defaultMovieForm: MovieFormState = {
+  title: '',
+  description: '',
+  genre: 'Drama',
+  language: 'Luganda',
+  releaseYear: new Date().getFullYear(),
+  durationMinutes: 90,
+  vjName: 'Moses Mukiibi',
+  posterUrl: 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&w=900&q=80',
+  bannerUrl: 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&w=1600&q=80',
+  trailerUrl: '',
+  videoUrl: '',
+  subtitlesUrl: '',
+  isUgandan: true,
+  isLugandaTranslation: false,
+  authorizationRequired: true,
+  availability: 'authorized',
+};
+
+const genres = ['All', 'Drama', 'Adventure', 'Romance', 'Family', 'Music'];
+const languages = ['All', 'Luganda', 'English', 'Swahili'];
+
+export default function App() {
+  const [page, setPage] = useState<PageView>('home');
+  const [movies, setMovies] = useState<Movie[]>(defaultMovies);
+  const [vjs, setVjs] = useState<VJ[]>(defaultVjs);
+  const [selectedMovie, setSelectedMovie] = useState<Movie | null>(defaultMovies[0]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [genreFilter, setGenreFilter] = useState('All');
+  const [languageFilter, setLanguageFilter] = useState('All');
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
+  const [account, setAccount] = useState<UserAccount>(defaultAccount);
+  const [authForm, setAuthForm] = useState({ fullName: '', email: '', password: '', confirmPassword: '' });
+  const [authNotice, setAuthNotice] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [movieForm, setMovieForm] = useState<MovieFormState>(defaultMovieForm);
+  const [adminNotice, setAdminNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void (async () => {
+      setIsLoadingCatalog(true);
+      const result = await fetchCatalog();
+      if (!isMounted) return;
+      setMovies(result.movies.length ? result.movies : getFallbackMovies());
+      setVjs(result.vjs.length ? result.vjs : defaultVjs);
+      setSelectedMovie(result.movies[0] ?? defaultMovies[0]);
+      setIsLoadingCatalog(false);
+    })();
+
+    const storedAccount = getStoredAccount();
+    setAccount(storedAccount);
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (movies.length) {
+      saveCatalogLocally(movies);
+    }
+  }, [movies]);
+
+  const featuredMovie = useMemo(
+    () => movies.find((movie) => movie.featured) ?? movies[0] ?? defaultMovies[0],
+    [movies],
+  );
+
+  const filteredMovies = useMemo(() => {
+    const normalized = searchTerm.trim().toLowerCase();
+    return movies.filter((movie) => {
+      const bySearch =
+        !normalized ||
+        movie.title.toLowerCase().includes(normalized) ||
+        movie.genre.toLowerCase().includes(normalized) ||
+        movie.language.toLowerCase().includes(normalized) ||
+        movie.vjName.toLowerCase().includes(normalized);
+
+      const byGenre = genreFilter === 'All' || movie.genre === genreFilter;
+      const byLanguage = languageFilter === 'All' || movie.language === languageFilter;
+      return bySearch && byGenre && byLanguage;
+    });
+  }, [genreFilter, languageFilter, movies, searchTerm]);
+
+  const trendingMovies = [...movies].sort((a, b) => b.rating - a.rating).slice(0, 5);
+  const recentlyAdded = [...movies].slice(0, 4);
+  const ugandanMovies = movies.filter((movie) => movie.isUgandan);
+  const lugandaMovies = movies.filter((movie) => movie.isLugandaTranslation || movie.language === 'Luganda');
+
+  const favoriteIds = account.favorites;
+  const watchlistIds = account.watchlist;
+
+  const openMovie = (movie: Movie) => {
+    setSelectedMovie(movie);
+    setPage('details');
+  };
+
+  const handleAuthSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const email = authForm.email.trim();
+    const password = authForm.password.trim();
+
+    if (!email || !password) {
+      setAuthNotice({ type: 'error', message: 'Email and password are required.' });
+      return;
+    }
+
+    if (authMode === 'register') {
+      if (authForm.password !== authForm.confirmPassword) {
+        setAuthNotice({ type: 'error', message: 'Passwords do not match.' });
+        return;
+      }
+
+      if (authForm.fullName.trim().length < 2) {
+        setAuthNotice({ type: 'error', message: 'Please enter your full name.' });
+        return;
+      }
+
+      const { account: createdAccount, error } = await signUpAccount({
+        fullName: authForm.fullName,
+        email,
+        password,
+      });
+
+      if (error) {
+        setAuthNotice({ type: 'error', message: error });
+        return;
+      }
+
+      setAccount(createdAccount ?? { ...defaultAccount, isAuthenticated: true, name: authForm.fullName, email });
+      setAuthNotice({ type: 'success', message: 'Registration successful.' });
+      setAuthMode('login');
+      return;
+    }
+
+    if (authMode === 'reset') {
+      const result = await resetPasswordRequest(email);
+      setAuthNotice({
+        type: result.success ? 'success' : 'error',
+        message: result.message,
+      });
+      return;
+    }
+
+    const { account: signedInAccount, error } = await signInAccount({ email, password });
+    if (error) {
+      setAuthNotice({ type: 'error', message: error });
+      return;
+    }
+
+    setAccount(signedInAccount ?? { ...defaultAccount, isAuthenticated: true, email, name: email.split('@')[0] });
+    setAuthNotice({ type: 'success', message: 'Logged in successfully.' });
+  };
+
+  const handleToggleFavorite = (movieId: string) => {
+    if (!account.isAuthenticated) {
+      setAuthNotice({ type: 'info', message: 'Please sign in to save favourites.' });
+      setPage('account');
+      return;
+    }
+
+    const isAdded = favoriteIds.includes(movieId);
+    const updated = persistFavorite(movieId, !isAdded);
+    setAccount((current) => ({ ...current, favorites: updated }));
+  };
+
+  const handleToggleWatchlist = (movieId: string) => {
+    if (!account.isAuthenticated) {
+      setAuthNotice({ type: 'info', message: 'Please sign in to create a watchlist.' });
+      setPage('account');
+      return;
+    }
+
+    const isAdded = watchlistIds.includes(movieId);
+    const updated = persistWatchlist(movieId, !isAdded);
+    setAccount((current) => ({ ...current, watchlist: updated }));
+  };
+
+  const handleLogout = async () => {
+    const guest = await signOutAccount();
+    setAccount(guest);
+    setAuthNotice({ type: 'success', message: 'You are now logged out.' });
+  };
+
+  const handleMovieSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!movieForm.title.trim()) {
+      setAdminNotice({ type: 'error', message: 'Movie title is required.' });
+      return;
+    }
+
+    const newMovie: Movie = {
+      id: `movie-${Date.now()}`,
+      slug: movieForm.title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      title: movieForm.title,
+      description: movieForm.description || 'Newly added title from the admin dashboard.',
+      posterUrl: movieForm.posterUrl || 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&w=900&q=80',
+      bannerUrl: movieForm.bannerUrl || movieForm.posterUrl || 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&w=1600&q=80',
+      releaseYear: Number(movieForm.releaseYear) || new Date().getFullYear(),
+      genre: movieForm.genre,
+      language: movieForm.language,
+      durationMinutes: Number(movieForm.durationMinutes) || 90,
+      vjId: 'vj-admin',
+      vjName: movieForm.vjName,
+      isUgandan: movieForm.isUgandan,
+      isLugandaTranslation: movieForm.isLugandaTranslation,
+      featured: false,
+      trailerUrl: movieForm.trailerUrl || '',
+      videoUrl: movieForm.videoUrl || '',
+      subtitlesUrl: movieForm.subtitlesUrl || '',
+      authorizationRequired: movieForm.authorizationRequired,
+      availability: movieForm.availability,
+      rating: 4.5,
+    };
+
+    const updated = [newMovie, ...movies];
+    setMovies(updated);
+    setSelectedMovie(newMovie);
+    seedAdminMovie(newMovie);
+    setAdminNotice({ type: 'success', message: 'Movie record saved to the catalog.' });
+    setMovieForm(defaultMovieForm);
+  };
+
+  const renderContent = () => {
+    if (page === 'details' && selectedMovie) {
+      return (
+        <main className="page-shell">
+          <div className="movie-detail-hero" style={{ backgroundImage: `linear-gradient(90deg, rgba(7, 10, 15, 0.9), rgba(7, 10, 15, 0.4)), url(${selectedMovie.bannerUrl})` }}>
+            <div className="detail-grid">
+              <img className="detail-poster" src={selectedMovie.posterUrl} alt={selectedMovie.title} />
+              <div className="detail-copy">
+                <p className="eyebrow small">{selectedMovie.isUgandan ? 'Ugandan film' : 'International title'}</p>
+                <h1>{selectedMovie.title}</h1>
+                <div className="meta-row">
+                  <span>{selectedMovie.releaseYear}</span>
+                  <span>{selectedMovie.genre}</span>
+                  <span>{selectedMovie.language}</span>
+                  <span>{selectedMovie.durationMinutes} min</span>
+                  <span>VJ: {selectedMovie.vjName}</span>
+                </div>
+                <p>{selectedMovie.description}</p>
+                <div className="action-row">
+                  <button className="primary-button" disabled={!selectedMovie.videoUrl || selectedMovie.availability === 'unavailable'}>
+                    {selectedMovie.videoUrl && selectedMovie.availability === 'authorized' ? 'Watch Now' : 'No playable source'}
+                  </button>
+                  <button className="secondary-button" onClick={() => selectedMovie.trailerUrl && window.open(selectedMovie.trailerUrl, '_blank', 'noopener,noreferrer')}>
+                    {selectedMovie.trailerUrl ? 'Trailer' : 'Trailer unavailable'}
+                  </button>
+                  <button className="ghost-button" onClick={() => handleToggleFavorite(selectedMovie.id)}>
+                    {favoriteIds.includes(selectedMovie.id) ? 'Remove Favorite' : 'Add Favorite'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <section className="media-section">
+            <VideoPlayer movie={selectedMovie} />
+          </section>
+        </main>
+      );
+    }
+
+    if (page === 'vjs') {
+      return (
+        <main className="page-shell">
+          <SectionHeading title="VJ Directory" subtitle="Browse Ugandan video jockeys and the stories they narrate." />
+          <div className="vj-grid">
+            {vjs.map((vj) => (
+              <div key={vj.id} className="vj-card">
+                <img src={vj.photoUrl} alt={vj.name} />
+                <div className="vj-card-body">
+                  <h3>{vj.name}</h3>
+                  <p>{vj.bio}</p>
+                  <div className="chip-row">
+                    {vj.movies.slice(0, 3).map((movieSlug) => {
+                      const foundMovie = movies.find((movie) => movie.slug === movieSlug);
+                      return foundMovie ? (
+                        <button key={movieSlug} className="chip-button" onClick={() => openMovie(foundMovie)}>
+                          {foundMovie.title}
+                        </button>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </main>
+      );
+    }
+
+    if (page === 'account') {
+      return (
+        <main className="page-shell account-layout">
+          <div className="panel">
+            <SectionHeading title="Account access" subtitle="Create secure access, manage favorites, and maintain watchlists." />
+            <div className="tab-row">
+              <button className={authMode === 'login' ? 'tab active' : 'tab'} onClick={() => setAuthMode('login')}>Login</button>
+              <button className={authMode === 'register' ? 'tab active' : 'tab'} onClick={() => setAuthMode('register')}>Register</button>
+              <button className={authMode === 'reset' ? 'tab active' : 'tab'} onClick={() => setAuthMode('reset')}>Reset</button>
+            </div>
+
+            <form className="auth-form" onSubmit={handleAuthSubmit}>
+              {authMode === 'register' && (
+                <label>
+                  Full name
+                  <input value={authForm.fullName} onChange={(e) => setAuthForm({ ...authForm, fullName: e.target.value })} placeholder="Jane Nambalirwa" />
+                </label>
+              )}
+
+              <label>
+                Email
+                <input type="email" value={authForm.email} onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })} placeholder="user@example.com" />
+              </label>
+
+              {authMode !== 'reset' && (
+                <label>
+                  Password
+                  <input type="password" value={authForm.password} onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })} placeholder="••••••••" />
+                </label>
+              )}
+
+              {authMode === 'register' && (
+                <label>
+                  Confirm password
+                  <input type="password" value={authForm.confirmPassword} onChange={(e) => setAuthForm({ ...authForm, confirmPassword: e.target.value })} placeholder="Repeat your password" />
+                </label>
+              )}
+
+              {authNotice && <div className={`notice ${authNotice.type}`}>{authNotice.message}</div>}
+
+              <button className="primary-button" type="submit">
+                {authMode === 'login' ? 'Login' : authMode === 'register' ? 'Create account' : 'Send reset email'}
+              </button>
+            </form>
+          </div>
+
+          <div className="panel">
+            <SectionHeading title="Your library" subtitle="Favorites and watchlists sync to browser storage or Supabase when configured." />
+            <div className="mini-list">
+              <h3>Favorites</h3>
+              {account.favorites.length ? (
+                account.favorites.map((movieId) => {
+                  const movie = movies.find((entry) => entry.id === movieId);
+                  return movie ? (
+                    <button key={movie.id} className="list-item" onClick={() => openMovie(movie)}>
+                      <span>{movie.title}</span>
+                      <span className="muted">{movie.genre}</span>
+                    </button>
+                  ) : null;
+                })
+              ) : (
+                <p className="muted">No favorites saved yet.</p>
+              )}
+            </div>
+            <div className="mini-list">
+              <h3>Watchlist</h3>
+              {account.watchlist.length ? (
+                account.watchlist.map((movieId) => {
+                  const movie = movies.find((entry) => entry.id === movieId);
+                  return movie ? (
+                    <button key={movie.id} className="list-item" onClick={() => openMovie(movie)}>
+                      <span>{movie.title}</span>
+                      <span className="muted">{movie.language}</span>
+                    </button>
+                  ) : null;
+                })
+              ) : (
+                <p className="muted">No titles queued yet.</p>
+              )}
+            </div>
+
+            {account.isAuthenticated && (
+              <button className="secondary-button" onClick={handleLogout}>Logout</button>
+            )}
+          </div>
+        </main>
+      );
+    }
+
+    if (page === 'admin') {
+      return (
+        <main className="page-shell admin-layout">
+          <SectionHeading title="Admin dashboard" subtitle="Manage content visibility, movie metadata, and video links." />
+          <div className="panel admin-panel">
+            <form onSubmit={handleMovieSubmit} className="admin-form">
+              <div className="two-column">
+                <label>
+                  Title
+                  <input value={movieForm.title} onChange={(e) => setMovieForm({ ...movieForm, title: e.target.value })} placeholder="Movie title" />
+                </label>
+                <label>
+                  VJ Name
+                  <input value={movieForm.vjName} onChange={(e) => setMovieForm({ ...movieForm, vjName: e.target.value })} placeholder="Moses Mukiibi" />
+                </label>
+              </div>
+
+              <label>
+                Description
+                <textarea value={movieForm.description} onChange={(e) => setMovieForm({ ...movieForm, description: e.target.value })} placeholder="Short description" rows={4} />
+              </label>
+
+              <div className="two-column">
+                <label>
+                  Genre
+                  <select value={movieForm.genre} onChange={(e) => setMovieForm({ ...movieForm, genre: e.target.value })}>
+                    {genres.filter((entry) => entry !== 'All').map((entry) => (
+                      <option key={entry} value={entry}>{entry}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Language
+                  <select value={movieForm.language} onChange={(e) => setMovieForm({ ...movieForm, language: e.target.value })}>
+                    {languages.filter((entry) => entry !== 'All').map((entry) => (
+                      <option key={entry} value={entry}>{entry}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="two-column">
+                <label>
+                  Release year
+                  <input type="number" value={movieForm.releaseYear} onChange={(e) => setMovieForm({ ...movieForm, releaseYear: Number(e.target.value) })} />
+                </label>
+                <label>
+                  Duration (min)
+                  <input type="number" value={movieForm.durationMinutes} onChange={(e) => setMovieForm({ ...movieForm, durationMinutes: Number(e.target.value) })} />
+                </label>
+              </div>
+
+              <div className="two-column">
+                <label>
+                  Poster URL
+                  <input value={movieForm.posterUrl} onChange={(e) => setMovieForm({ ...movieForm, posterUrl: e.target.value })} />
+                </label>
+                <label>
+                  Banner URL
+                  <input value={movieForm.bannerUrl} onChange={(e) => setMovieForm({ ...movieForm, bannerUrl: e.target.value })} />
+                </label>
+              </div>
+
+              <div className="two-column">
+                <label>
+                  Trailer URL
+                  <input value={movieForm.trailerUrl} onChange={(e) => setMovieForm({ ...movieForm, trailerUrl: e.target.value })} />
+                </label>
+                <label>
+                  Video URL
+                  <input value={movieForm.videoUrl} onChange={(e) => setMovieForm({ ...movieForm, videoUrl: e.target.value })} />
+                </label>
+              </div>
+
+              <label>
+                Subtitle URL
+                <input value={movieForm.subtitlesUrl} onChange={(e) => setMovieForm({ ...movieForm, subtitlesUrl: e.target.value })} />
+              </label>
+
+              <div className="toggle-grid">
+                <label className="toggle-box">
+                  <input type="checkbox" checked={movieForm.isUgandan} onChange={(e) => setMovieForm({ ...movieForm, isUgandan: e.target.checked })} />
+                  Ugandan original
+                </label>
+                <label className="toggle-box">
+                  <input type="checkbox" checked={movieForm.isLugandaTranslation} onChange={(e) => setMovieForm({ ...movieForm, isLugandaTranslation: e.target.checked })} />
+                  Luganda translation
+                </label>
+                <label className="toggle-box">
+                  <input type="checkbox" checked={movieForm.authorizationRequired} onChange={(e) => setMovieForm({ ...movieForm, authorizationRequired: e.target.checked })} />
+                  Requires authorization
+                </label>
+              </div>
+
+              <select value={movieForm.availability} onChange={(e) => setMovieForm({ ...movieForm, availability: e.target.value as MovieFormState['availability'] })}>
+                <option value="authorized">Authorized</option>
+                <option value="unavailable">Unavailable</option>
+              </select>
+
+              {adminNotice && <div className={`notice ${adminNotice.type}`}>{adminNotice.message}</div>}
+              <button className="primary-button" type="submit">Publish record</button>
+            </form>
+          </div>
+        </main>
+      );
+    }
+
+    return (
+      <main className="page-shell home-shell">
+        <section className="featured-section">
+          <div className="featured-banner" style={{ backgroundImage: `linear-gradient(90deg, rgba(7, 10, 15, 0.76), rgba(14, 9, 18, 0.2)), url(${featuredMovie.bannerUrl})` }}>
+            <div className="featured-copy">
+              <p className="eyebrow">Featured premiere</p>
+              <h1>{featuredMovie.title}</h1>
+              <p>{featuredMovie.description}</p>
+              <div className="featured-meta">
+                <span>{featuredMovie.genre}</span>
+                <span>{featuredMovie.language}</span>
+                <span>{featuredMovie.durationMinutes} min</span>
+              </div>
+              <div className="action-row">
+                <button className="primary-button" onClick={() => openMovie(featuredMovie)}>Watch preview</button>
+                <button className="secondary-button" onClick={() => handleToggleFavorite(featuredMovie.id)}>
+                  {favoriteIds.includes(featuredMovie.id) ? 'Saved' : 'Favorite'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="toolbar panel">
+          <div className="search-box">
+            <input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by title, genre, language, or VJ"
+            />
+          </div>
+          <div className="filter-row">
+            <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)}>
+              {genres.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+            <select value={languageFilter} onChange={(e) => setLanguageFilter(e.target.value)}>
+              {languages.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </div>
+        </section>
+
+        <SectionHeading title="Trending Movies" subtitle="Most-loved titles across the PearlFlix catalog." />
+        <div className="movie-grid">
+          {trendingMovies.map((movie) => (
+            <MovieCard key={movie.id} movie={movie} onSelect={openMovie} onFavorite={handleToggleFavorite} isFavorite={favoriteIds.includes(movie.id)} isWatchlisted={watchlistIds.includes(movie.id)} onWatchlist={handleToggleWatchlist} />
+          ))}
+        </div>
+
+        <SectionHeading title="Recently Added" subtitle="Fresh releases and newly curated stories." />
+        <div className="movie-grid small-grid">
+          {recentlyAdded.map((movie) => (
+            <MovieCard key={movie.id} movie={movie} onSelect={openMovie} onFavorite={handleToggleFavorite} isFavorite={favoriteIds.includes(movie.id)} isWatchlisted={watchlistIds.includes(movie.id)} onWatchlist={handleToggleWatchlist} compact />
+          ))}
+        </div>
+
+        <SectionHeading title="Ugandan Movies" subtitle="Local stories, homegrown talent, and community voices." />
+        <div className="movie-grid small-grid">
+          {ugandanMovies.map((movie) => (
+            <MovieCard key={movie.id} movie={movie} onSelect={openMovie} onFavorite={handleToggleFavorite} isFavorite={favoriteIds.includes(movie.id)} isWatchlisted={watchlistIds.includes(movie.id)} onWatchlist={handleToggleWatchlist} compact />
+          ))}
+        </div>
+
+        <SectionHeading title="Luganda Movies" subtitle="Luganda translations and local-language storytelling." />
+        <div className="movie-grid small-grid">
+          {lugandaMovies.map((movie) => (
+            <MovieCard key={movie.id} movie={movie} onSelect={openMovie} onFavorite={handleToggleFavorite} isFavorite={favoriteIds.includes(movie.id)} isWatchlisted={watchlistIds.includes(movie.id)} onWatchlist={handleToggleWatchlist} compact />
+          ))}
+        </div>
+
+        <SectionHeading title="Popular VJs" subtitle="Profiles driving the narration and mood of every experience." />
+        <div className="vj-grid compact-vj-grid">
+          {vjs.slice(0, 3).map((vj) => (
+            <div key={vj.id} className="vj-card">
+              <img src={vj.photoUrl} alt={vj.name} />
+              <div className="vj-card-body">
+                <h3>{vj.name}</h3>
+                <p>{vj.bio}</p>
+                <button className="chip-button" onClick={() => setPage('vjs')}>Browse movies</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {filteredMovies.length === 0 && (
+          <div className="empty-panel">
+            <h3>No movies match your search.</h3>
+            <p>Try another title, language, or category filter.</p>
+          </div>
+        )}
+      </main>
+    );
+  };
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="brand-wrap" onClick={() => setPage('home')}>
+          <div className="brand-mark">P</div>
+          <div>
+            <strong>PearlFlix Uganda</strong>
+            <small>Home of Ugandan stories</small>
+          </div>
+        </div>
+
+        <nav className="main-nav">
+          <button className={page === 'home' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('home')}>Home</button>
+          <button className={page === 'details' ? 'nav-item active' : 'nav-item'} onClick={() => selectedMovie && setPage('details')}>Details</button>
+          <button className={page === 'vjs' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('vjs')}>VJs</button>
+          <button className={page === 'account' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('account')}>Account</button>
+          <button className={page === 'admin' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('admin')}>Admin</button>
+        </nav>
+
+        <div className="user-chip">
+          <span>{account.isAuthenticated ? account.name : 'Guest'}</span>
+          {account.isAuthenticated && <button className="tiny-button" onClick={handleLogout}>Logout</button>}
+        </div>
+      </header>
+
+      {isLoadingCatalog ? <LoadingState /> : renderContent()}
+
+      <footer className="site-footer">
+        <div>
+          <strong>PearlFlix Uganda</strong>
+          <p>Premium access to Ugandan films, Luganda translations, and VJ narrated titles.</p>
+        </div>
+        <div className="footer-note">
+          Demo mode active until Supabase is connected. Real payments are not enabled.
+        </div>
+      </footer>
+    </div>
+  );
 }
 
-@media print {
-  body {
-    background-color: #ffffff !important;
-    color: #000000 !important;
-  }
-  header, footer, nav, .print\:hidden {
-    display: none !important;
-  }
-  #printable-report {
-    background-color: #ffffff !important;
-    color: #0f172a !important;
-    padding: 0 !important;
-    box-shadow: none !important;
-  }
+function MovieCard({
+  movie,
+  onSelect,
+  onFavorite,
+  onWatchlist,
+  isFavorite,
+  isWatchlisted,
+  compact = false,
+}: {
+  movie: Movie;
+  onSelect: (movie: Movie) => void;
+  onFavorite: (movieId: string) => void;
+  onWatchlist: (movieId: string) => void;
+  isFavorite: boolean;
+  isWatchlisted: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <article className={compact ? 'movie-card compact' : 'movie-card'}>
+      <div className="poster-wrap" onClick={() => onSelect(movie)}>
+        <img src={movie.posterUrl} alt={movie.title} />
+        <div className="poster-overlay">
+          <span>{movie.language}</span>
+          <span>{movie.availability === 'authorized' ? 'Authorized' : 'Unavailable'}</span>
+        </div>
+      </div>
+
+      <div className="movie-body">
+        <div className="movie-headline">
+          <h3>{movie.title}</h3>
+          <span>{movie.rating.toFixed(1)}</span>
+        </div>
+        <p>{movie.genre} • {movie.releaseYear}</p>
+        <div className="card-actions">
+          <button className="primary-button" onClick={() => onSelect(movie)}>Details</button>
+          <button className="ghost-button" onClick={() => onFavorite(movie.id)}>{isFavorite ? 'Saved' : 'Favorite'}</button>
+          <button className="tiny-button" onClick={() => onWatchlist(movie.id)}>{isWatchlisted ? 'Queued' : 'Watchlist'}</button>
+        </div>
+      </div>
+    </article>
+  );
 }
+
+function SectionHeading({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div className="section-heading">
+      <div>
+        <p className="eyebrow">PearlFlix</p>
+        <h2>{title}</h2>
+      </div>
+      <p>{subtitle}</p>
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <main className="page-shell loading-state">
+      <div className="spinner" />
+      <p>Loading PearlFlix catalog...</p>
+    </main>
+  );
+}
+
+function VideoPlayer({ movie }: { movie: Movie }) {
+  const [error, setError] = useState(false);
+
+  if (!movie.videoUrl || movie.availability === 'unavailable') {
+    return (
+      <div className="video-placeholder">
+        <h3>No playable source configured.</h3>
+        <p>This video is not available yet. Add a source in Supabase storage or upload a valid source to enable playback.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="video-wrapper">
+      <video
+        controls
+        playsInline
+        poster={movie.posterUrl}
+        onError={() => setError(true)}
+        className="video-player"
+      >
+        {movie.subtitlesUrl && <track src={movie.subtitlesUrl} kind="subtitles" srcLang="en" label="English" default />}
+        <source src={movie.videoUrl} type="video/mp4" />
+      </video>
+
+      {error && (
+        <div className="notice error">
+          The selected video could not be loaded. Please check the Supabase file URL or streaming source.
+        </div>
+      )}
+    </div>
+  );
+}
+
